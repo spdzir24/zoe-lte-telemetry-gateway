@@ -5,6 +5,8 @@
 #include "modem_handler.h"
 #include "power_manager.h"
 #include "data_manager.h"
+#include <HardwareSerial.h>
+#include <soc/adc_channel.h>
 
 // Global object instances
 CANHandler can_handler;
@@ -60,11 +62,11 @@ void setup() {
     // Initialize SIM7080G Modem
     DEBUG_PRINTLN("[SETUP] Initializing modem...");
     if (!modem_handler.begin()) {
-        DEBUG_PRINTLN("[ERROR] Modem initialization failed");
+        DEBUG_PRINTLN("[WARN] Modem initialization failed, will retry");
         // Continue anyway - might recover later
     }
     
-    // Wait for modem to connect to network
+    // Wait for modem to connect to network (with timeout)
     DEBUG_PRINTLN("[SETUP] Connecting to network...");
     uint32_t start_connect = millis();
     while (!modem_handler.isNetworkConnected()) {
@@ -79,7 +81,11 @@ void setup() {
         DEBUG_PRINTLN("[SETUP] Network connected!");
         
         // Try to enable GPS
-        modem_handler.enableGPS();
+        if (modem_handler.enableGPS()) {
+            DEBUG_PRINTLN("[SETUP] GPS enabled");
+        }
+    } else {
+        DEBUG_PRINTLN("[WARN] Network not connected, will retry in main loop");
     }
     
     // Initialize MQTT Handler
@@ -95,11 +101,11 @@ void setup() {
         DEBUG_PRINTLN("[ERROR] Data manager initialization failed");
         delete data_manager;
         data_manager = nullptr;
+    } else {
+        // Register all Renault Zoe specific signals
+        DEBUG_PRINTLN("[SETUP] Registering vehicle signals...");
+        data_manager->registerAllZoeSignals();
     }
-    
-    // Register all Renault Zoe specific signals
-    DEBUG_PRINTLN("[SETUP] Registering vehicle signals...");
-    data_manager->registerAllZoeSignals();
     
     // LED indication: ready
     digitalWrite(LED_PIN, HIGH);
@@ -107,6 +113,7 @@ void setup() {
     digitalWrite(LED_PIN, LOW);
     
     DEBUG_PRINTLN("[SETUP] Initialization complete! System ready.");
+    DEBUG_PRINTLN("=====================================\n");
 }
 
 // ============================================================================
@@ -200,7 +207,7 @@ void handleMQTTConnection() {
 void checkSleepConditions() {
     // Check if vehicle is idle and should enter deep sleep
     if (power_manager.shouldEnterSleep() && ENABLE_DEEP_SLEEP) {
-        DEBUG_PRINTLN("[Sleep] Vehicle idle, entering deep sleep...");
+        DEBUG_PRINTLN("\n[Sleep] Vehicle idle, preparing for deep sleep...");
         
         // Publish offline status before sleeping
         mqtt_handler.publish(MQTT_BASE_TOPIC "/status", "sleeping", true);
@@ -210,12 +217,14 @@ void checkSleepConditions() {
         modem_handler.disconnect();
         mqtt_handler.disconnect();
         
-        // Enter deep sleep (wakes on CAN activity or RTC timer)
+        DEBUG_PRINTLN("[Sleep] Entering deep sleep for " STRINGIFY(RTC_WAKEUP_INTERVAL) " seconds");
+        
+        // Enter deep sleep (wakes on RTC timer - CAN wake would require external interrupt)
         power_manager.goToDeepSleep(RTC_WAKEUP_INTERVAL);
         
         // After waking from deep sleep, this code continues
         power_manager.wakeFromDeepSleep();
-        DEBUG_PRINTLN("[Sleep] Woke from deep sleep!");
+        DEBUG_PRINTLN("\n[Sleep] Woke from deep sleep! Reconnecting...");
         
         // Reconnect to network
         modem_handler.begin();
@@ -223,18 +232,20 @@ void checkSleepConditions() {
 }
 
 void printSystemStatus() {
-    DEBUG_PRINTLN("\n=== SYSTEM STATUS ===");
+    DEBUG_PRINTLN("\n====== SYSTEM STATUS REPORT =======");
     DEBUG_PRINTF("Uptime: %lu seconds\n", millis() / 1000);
-    DEBUG_PRINTF("CAN1 messages: %lu\n", can_handler.getMessagesReceived1());
+    DEBUG_PRINTF("CAN1 messages received: %lu\n", can_handler.getMessagesReceived1());
     DEBUG_PRINTF("MQTT messages published: %lu\n", mqtt_handler.getMessagesPublished());
     
     if (data_manager) {
-        DEBUG_PRINTF("Data processed: %lu\n", data_manager->getProcessedMessageCount());
+        DEBUG_PRINTF("Data manager - Processed: %lu, Published: %lu\n",
+                     data_manager->getProcessedMessageCount(),
+                     data_manager->getPublishedMessageCount());
     }
     
     DEBUG_PRINTF("Power state: %s\n", power_manager.getPowerStateName());
     DEBUG_PRINTF("Idle time: %lu ms\n", power_manager.getIdleTime());
-    DEBUG_PRINTF("Battery: %.2fV (%.0f%%)\n",
+    DEBUG_PRINTF("Battery: %.2f V (%.0f%%)\n",
                  power_manager.getBatteryVoltage(),
                  (float)power_manager.estimateBatteryPercent());
     
@@ -243,9 +254,11 @@ void printSystemStatus() {
                  net_status.is_connected ? "Connected" : "Disconnected",
                  net_status.signal_strength);
     
-    DEBUG_PRINTF("MQTT: %s (attempts: %lu)\n",
+    DEBUG_PRINTF("MQTT: %s (connection attempts: %lu)\n",
                  mqtt_handler.isConnected() ? "Connected" : "Disconnected",
                  mqtt_handler.getConnectionAttempts());
     
-    DEBUG_PRINTLN("=====================\n");
+    DEBUG_PRINTLN("====================================\n");
 }
+
+#define STRINGIFY(x) #x
