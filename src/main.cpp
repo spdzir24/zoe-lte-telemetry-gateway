@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "config.h"
+#include "settings.h"
 #include "can_handler.h"
 #include "mqtt_handler.h"
 #include "modem_handler.h"
@@ -17,6 +18,7 @@ DataManager data_manager(&can_handler, &mqtt_handler, &modem_handler);
 void handleMQTTConnection();
 void checkSleepConditions();
 void printSystemStatus();
+void initializeFromSettings();
 
 void setup() {
     Serial.begin(115200);
@@ -27,11 +29,41 @@ void setup() {
     DEBUG_PRINTF("Built: %s\n", __DATE__);
     DEBUG_PRINTLN("==================================");
     
-    // Initialize all components
+    // Initialize Settings Manager FIRST
+    DEBUG_PRINTLN("[System] Initializing Settings Manager...");
+    if (!g_settings.begin()) {
+        DEBUG_PRINTLN("[System] CRITICAL: Settings initialization failed!");
+        // Continue anyway with defaults
+    } else {
+        DEBUG_PRINTLN("[System] Settings loaded successfully");
+        g_settings.debugPrint();
+    }
+    
+    // Initialize configuration from settings
+    initializeFromSettings();
+    
+    // Initialize all components with settings
+    DEBUG_PRINTLN("[System] Initializing CAN Handler...");
     can_handler.begin();
+    
+    DEBUG_PRINTLN("[System] Initializing Modem Handler...");
     modem_handler.begin();
+    
+    DEBUG_PRINTLN("[System] Initializing Power Manager...");
     power_manager.begin();
+    
+    DEBUG_PRINTLN("[System] Initializing Data Manager...");
     data_manager.begin();
+    
+    // List files on LittleFS (debug)
+    g_settings.listFiles();
+    
+    // Get filesystem info
+    uint32_t used, total;
+    if (g_settings.getFilesystemInfo(used, total)) {
+        DEBUG_PRINTF("[System] Filesystem: %u / %u bytes (%.1f%% used)\n", 
+                    used, total, (float)used / total * 100);
+    }
     
     DEBUG_PRINTLN("[System] Setup complete!");
 }
@@ -51,18 +83,24 @@ void loop() {
     // Power management
     data_manager.loop();
     
-    // GPS update every 5 minutes (when connected)
+    // GPS update interval from settings
     static uint32_t last_gps_update = 0;
-    if ((millis() - last_gps_update) > 300000UL && modem_handler.isNetworkConnected()) {
+    uint32_t gps_interval = g_settings.getSettings().modem.gps_interval;
+    
+    if ((millis() - last_gps_update) > gps_interval && modem_handler.isNetworkConnected()) {
         GPSData_t gps;
         if (modem_handler.getGPS(gps)) {
-            DEBUG_PRINTF("[GPS] Lat: %.6f, Lon: %.6f, Sats: %d\n", gps.latitude, gps.longitude, gps.satellites);
+            DEBUG_PRINTF("[GPS] Lat: %.6f, Lon: %.6f, Sats: %d\n", 
+                        gps.latitude, gps.longitude, gps.satellites);
+            
+            // Get base topic from settings
+            const char* base_topic = g_settings.getSettings().mqtt.base_topic;
             
             char gps_topic[128];
-            snprintf(gps_topic, sizeof(gps_topic), "%s/gps/latitude", MQTT_BASE_TOPIC);
+            snprintf(gps_topic, sizeof(gps_topic), "%s/gps/latitude", base_topic);
             mqtt_handler.publish(gps_topic, gps.latitude, 6);
             
-            snprintf(gps_topic, sizeof(gps_topic), "%s/gps/longitude", MQTT_BASE_TOPIC);
+            snprintf(gps_topic, sizeof(gps_topic), "%s/gps/longitude", base_topic);
             mqtt_handler.publish(gps_topic, gps.longitude, 6);
         }
         last_gps_update = millis();
@@ -84,9 +122,12 @@ void loop() {
 void handleMQTTConnection() {
     if (!mqtt_handler.isConnected()) {
         static uint32_t last_attempt = 0;
-        if ((millis() - last_attempt) > 10000UL) {
+        uint32_t reconnect_interval = g_settings.getSettings().mqtt.reconnect_interval;
+        
+        if ((millis() - last_attempt) > reconnect_interval) {
             DEBUG_PRINTLN("[MQTT] Attempting connection...");
-            mqtt_handler.connect(MQTT_USERNAME, MQTT_PASSWORD);
+            const auto& mqtt_settings = g_settings.getSettings().mqtt;
+            mqtt_handler.connect(mqtt_settings.username, mqtt_settings.password);
             last_attempt = millis();
         }
     }
@@ -95,12 +136,48 @@ void handleMQTTConnection() {
 void checkSleepConditions() {
     // Check if we should enter sleep
     if (power_manager.shouldEnterSleep()) {
-        // Would enter sleep here
-        // power_manager.goToLightSleep(5000);
+        uint32_t sleep_timeout = g_settings.getSettings().power.sleep_timeout_idle;
+        if (power_manager.getIdleTime() > sleep_timeout) {
+            // Would enter sleep here
+            // power_manager.goToLightSleep(5000);
+        }
     }
 }
 
+void initializeFromSettings() {
+    const auto& settings = g_settings.getSettings();
+    
+    DEBUG_PRINTLN("\n[Settings] Applying configuration:");
+    
+    // MQTT Settings
+    DEBUG_PRINTF("  MQTT: %s:%d\n", settings.mqtt.broker, settings.mqtt.port);
+    DEBUG_PRINTF("  Topic: %s\n", settings.mqtt.base_topic);
+    DEBUG_PRINTF("  Keepalive: %d seconds\n", settings.mqtt.keepalive);
+    
+    // CAN Settings
+    DEBUG_PRINTF("  CAN High Speed: %u bps\n", settings.can.speed_high);
+    DEBUG_PRINTF("  CAN Low Speed: %u bps\n", settings.can.speed_low);
+    DEBUG_PRINTF("  Dual CAN: %s\n", settings.can.dual_can ? "YES" : "NO");
+    
+    // Modem Settings
+    DEBUG_PRINTF("  Modem Baudrate: %u\n", settings.modem.baudrate);
+    DEBUG_PRINTF("  GPS Interval: %u ms\n", settings.modem.gps_interval);
+    DEBUG_PRINTF("  Min Satellites: %d\n", settings.modem.gps_min_satellites);
+    
+    // Power Settings
+    DEBUG_PRINTF("  Sleep Timeout: %u ms\n", settings.power.sleep_timeout_idle);
+    DEBUG_PRINTF("  Deep Sleep: %s\n", settings.power.deep_sleep_enabled ? "ENABLED" : "DISABLED");
+    
+    // Debug Settings
+    DEBUG_PRINTF("  Debug: %s\n", settings.debug.enabled ? "ENABLED" : "DISABLED");
+    DEBUG_PRINTF("  Log Level: %d\n", settings.debug.log_level);
+    
+    DEBUG_PRINTLN();
+}
+
 void printSystemStatus() {
+    const auto& settings = g_settings.getSettings();
+    
     DEBUG_PRINTLN("\n====== SYSTEM STATUS REPORT =======");
     DEBUG_PRINTF("Uptime: %lu seconds\n", millis() / 1000);
     DEBUG_PRINTF("Battery: %.2f V (%u%%)\n", power_manager.getBatteryVoltage(),
@@ -110,5 +187,13 @@ void printSystemStatus() {
     DEBUG_PRINTF("MQTT Connected: %s\n", mqtt_handler.isConnected() ? "Yes" : "No");
     DEBUG_PRINTF("Modem Connected: %s\n", modem_handler.isNetworkConnected() ? "Yes" : "No");
     DEBUG_PRINTF("Power State: %s\n", power_manager.getPowerStateName());
-    DEBUG_PRINTLN("===================================");
+    DEBUG_PRINTF("Idle Time: %lu ms\n", power_manager.getIdleTime());
+    
+    // Settings info
+    uint32_t used, total;
+    if (g_settings.getFilesystemInfo(used, total)) {
+        DEBUG_PRINTF("Filesystem: %u / %u bytes\n", used, total);
+    }
+    
+    DEBUG_PRINTLN("====================================\n");
 }
