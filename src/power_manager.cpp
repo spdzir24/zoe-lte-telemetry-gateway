@@ -1,6 +1,4 @@
 #include "power_manager.h"
-#include "modem_handler.h"
-#include "can_handler.h"
 
 PowerManager::PowerManager()
     : current_state(POWER_STATE_ACTIVE),
@@ -34,12 +32,12 @@ bool PowerManager::goToDeepSleep(uint32_t sleep_duration_seconds) {
     // Configure modem for sleep
     configureModemForSleep();
     
-    // Disable WiFi and Bluetooth
-    WiFi.mode(WIFI_OFF);
-    btStop();
+    // Disable WiFi (set to OFF if it was on)
+    // Note: WiFi is not enabled in this firmware, but keeping for completeness
+    // WiFi.mode(WIFI_OFF);
     
-    // Disable peripherals
-    adc_power_off();
+    // Bluetooth is not used, so no need to disable
+    // btStop() would only work if BT was initialized
     
     // Handle deep sleep
     handleDeepSleep(sleep_duration_seconds);
@@ -51,12 +49,18 @@ bool PowerManager::goToDeepSleep(uint32_t sleep_duration_seconds) {
 bool PowerManager::wakeFromDeepSleep() {
     DEBUG_PRINTLN("[Power] Waking from deep sleep...");
     
-    // Re-enable ADC
-    adc_power_on();
+    // Check wake-up cause
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    wakeup_from_rtc = (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER);
     
     current_state = POWER_STATE_ACTIVE;
     last_activity_time = millis();
-    wakeup_from_rtc = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
+    
+    if (wakeup_from_rtc) {
+        DEBUG_PRINTLN("[Power] Woke from RTC timer");
+    } else {
+        DEBUG_PRINTF("[Power] Woke from cause: %d\n", wakeup_reason);
+    }
     
     return true;
 }
@@ -104,7 +108,7 @@ float PowerManager::getBatteryVoltage() const {
     // Convert ADC value to voltage
     // ESP32 ADC: 0-4095 maps to 0-3.3V
     // With voltage divider: actual_voltage = (adc_value / 4095) * 3.3 * BAT_MON_MULTIPLIER
-    float voltage = (adc_value / 4095.0) * 3.3 * BAT_MON_MULTIPLIER;
+    float voltage = (adc_value / 4095.0f) * 3.3f * BAT_MON_MULTIPLIER;
     
     return voltage;
 }
@@ -114,14 +118,16 @@ uint8_t PowerManager::estimateBatteryPercent() const {
     
     // Simple linear approximation for 12V system
     // Typical: 12V = 100%, 10.5V = 0%
-    uint8_t percent = constrain((voltage - 10.5) / (12.0 - 10.5) * 100, 0, 100);
+    // For a 12V system monitored via 3.3V ADC with divider,
+    // adjust these thresholds based on your actual divider ratio
+    uint8_t percent = constrain((int)((voltage - 10.5f) / (12.0f - 10.5f) * 100.0f), 0, 100);
     
     return percent;
 }
 
 bool PowerManager::isBatteryLow() const {
     // Consider battery low if below 10.8V (for 12V system)
-    return getBatteryVoltage() < 10.8;
+    return getBatteryVoltage() < 10.8f;
 }
 
 const char* PowerManager::getPowerStateName() const {
@@ -140,8 +146,9 @@ const char* PowerManager::getPowerStateName() const {
 }
 
 void PowerManager::setupGPIOWakeup() {
-    // Setup GPIO wake-up (e.g., from CAN activity)
-    // This is typically done via external interrupt
+    // Setup GPIO wake-up (e.g., from external interrupt)
+    // This could be connected to a CAN bus activity detector
+    // For now, we rely on RTC timer wake-up
     DEBUG_PRINTLN("[Power] GPIO wake-up configured");
 }
 
@@ -153,18 +160,18 @@ void PowerManager::setupRTCTimer() {
 void PowerManager::handleDeepSleep(uint32_t duration) {
     if (duration > 0) {
         // Wake up after specified duration
-        esp_sleep_enable_timer_wakeup(duration * 1000000);  // Convert seconds to microseconds
-        DEBUG_PRINTF("[Power] Deep sleep for %lu seconds\n", duration);
-    } else {
-        // Wake up on external interrupt (CAN activity)
-        if (wakeup_on_can) {
-            // Setup CAN interrupt as wake-up source
-            DEBUG_PRINTLN("[Power] Wake on CAN activity enabled");
-        }
+        esp_sleep_enable_timer_wakeup((uint64_t)duration * 1000000);  // Convert seconds to microseconds
+        DEBUG_PRINTF("[Power] RTC timer set for %lu seconds\n", duration);
     }
     
+    // Optional: Setup GPIO wake-up on specific pin for CAN activity
+    // This would require an external interrupt circuit from the CAN transceiver
+    // esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, ESP_EXT0_WAKEUP_ALL_LOW);
+    
+    DEBUG_PRINTLN("[Power] Deep sleep starting now...");
+    
     // Enter deep sleep
-    esp_deep_sleep_start();  // This function does not return
+    esp_deep_sleep_start();  // This function does not return normally
 }
 
 void PowerManager::configureModemForSleep() {
@@ -172,6 +179,6 @@ void PowerManager::configureModemForSleep() {
     // This would be done through ModemHandler
     DEBUG_PRINTLN("[Power] Configuring modem for sleep mode");
     
-    // Example: Set DTR pin HIGH to request sleep
+    // Set DTR pin HIGH to request sleep (if ModemHandler not available here)
     // digitalWrite(MODEM_DTR_PIN, HIGH);
 }
