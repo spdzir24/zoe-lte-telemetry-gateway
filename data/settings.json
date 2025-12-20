@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "last_modified": 0,
+  "mqtt": {
+    "broker": "192.168.1.100",
+    "port": 1883,
+    "username": "homeassistant",
+    "password": "your_password_here",
+    "keepalive": 60,
+    "base_topic": "vehicle/zoe",
+    "publish_interval_fast": 60000,
+    "publish_interval_mid": 300000,
+    "publish_interval_slow": 3600000,
+    "reconnect_interval": 10000
+  },
+  "can": {
+    "speed_high": 500000,
+    "speed_low": 125000,
+    "dual_can": true,
+    "rx_queue_size": 256
+  },
+  "modem": {
+    "baudrate": 115200,
+    "network_mode": 38,
+    "preferred_mode": 1,
+    "gps_interval": 300000,
+    "gps_min_satellites": 4
+  },
+  "power": {
+    "sleep_timeout_idle": 300000,
+    "sleep_timeout_parked": 600000,
+    "rtc_wakeup_interval": 21600,
+    "deep_sleep_enabled": true
+  },
+  "debug": {
+    "enabled": true,
+    "log_level": 1,
+    "serial_output": true,
+    "file_logging": false
+  }
+}
