@@ -34,28 +34,28 @@ bool CANHandler::setupCAN1(uint32_t speed) {
         TWAI_MODE_NORMAL
     );
     
-    // Silence GCC warnings about missing field initializers
+    // Configure queue sizes
     g_config.rx_queue_len = 32;
     g_config.tx_queue_len = 16;
     
     twai_timing_config_t t_config;
     
-    // Configure timing based on speed
+    // Configure timing based on speed - CORRECT MACRO NAMES (KBITS not KBPS)
     switch(speed) {
         case 1000000:
-            t_config = TWAI_TIMING_CONFIG_1MBPS();
+            t_config = TWAI_TIMING_CONFIG_1MBITS();
             break;
         case 500000:
-            t_config = TWAI_TIMING_CONFIG_500KBPS();
+            t_config = TWAI_TIMING_CONFIG_500KBITS();
             break;
         case 250000:
-            t_config = TWAI_TIMING_CONFIG_250KBPS();
+            t_config = TWAI_TIMING_CONFIG_250KBITS();
             break;
         case 125000:
-            t_config = TWAI_TIMING_CONFIG_125KBPS();
+            t_config = TWAI_TIMING_CONFIG_125KBITS();
             break;
         default:
-            t_config = TWAI_TIMING_CONFIG_500KBPS();
+            t_config = TWAI_TIMING_CONFIG_500KBITS();
     }
     
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
@@ -198,10 +198,11 @@ void CANHandler::setupCANInterrupts2() {
     // Placeholder
 }
 
-void CANHandler::IRAM_ATTR onCAN1Receive(void *ctx) {
+void CANHandler::onCAN1Receive(void *ctx) {
     // ISR callback for CAN1 - handled via twai_read_alerts
+    // Note: IRAM_ATTR only works for static/global functions, not member functions
 }
 
-void CANHandler::IRAM_ATTR onCAN2Receive(void *ctx) {
+void CANHandler::onCAN2Receive(void *ctx) {
     // ISR callback for CAN2
 }
