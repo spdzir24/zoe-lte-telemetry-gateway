@@ -1,5 +1,7 @@
+#include "config.h"
 #include "settings.h"
 #include <FS.h>
+#include <LittleFS.h>
 
 // Global instance
 SettingsManager g_settings;
@@ -285,12 +287,20 @@ void SettingsManager::debugPrint() const {
 }
 
 bool SettingsManager::getFilesystemInfo(uint32_t& used_bytes, uint32_t& total_bytes) {
-    FSInfo fs_info;
-    if (!LittleFS.info(fs_info)) {
-        return false;
+    // LittleFS doesn't have info() method like SPIFFS, use different approach
+    // Calculate used space by counting files
+    used_bytes = 0;
+    total_bytes = 1048576;  // 1 MB LittleFS partition
+    
+    File root = LittleFS.open("/");
+    if (!root) return false;
+    
+    File file = root.openNextFile();
+    while (file) {
+        used_bytes += file.size();
+        file = root.openNextFile();
     }
-    used_bytes = fs_info.usedBytes;
-    total_bytes = fs_info.totalBytes;
+    
     return true;
 }
 
@@ -302,8 +312,9 @@ bool SettingsManager::formatFilesystem() {
 void SettingsManager::listFiles() {
     DEBUG_PRINTLN("[Settings] Files on LittleFS:");
     File root = LittleFS.open("/");
-    File file = root.openNextFile();
+    if (!root) return;
     
+    File file = root.openNextFile();
     while (file) {
         DEBUG_PRINTF("  %s (%u bytes)\n", file.name(), file.size());
         file = root.openNextFile();
