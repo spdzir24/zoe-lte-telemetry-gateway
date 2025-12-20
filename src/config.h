@@ -46,7 +46,8 @@
 #define MQTT_PUBLISH_INTERVAL_SLOW 3600000UL // 60 minutes (statistics, history)
 
 #define MQTT_RECONNECT_INTERVAL 10000      // Retry connection every 10s
-#define MQTT_KEEPALIVE 60                   // MQTT keep-alive in seconds
+// Note: MQTT_KEEPALIVE is defined by PubSubClient library (default 15 seconds)
+// To override, set it before including PubSubClient.h
 
 // ============================================================================
 // SIM7080G MODEM CONFIGURATION
