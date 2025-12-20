@@ -1,37 +1,43 @@
 #include "power_manager.h"
 
 PowerManager::PowerManager()
-    : current_state(POWER_ACTIVE),
-      last_activity(0),
+    : current_state(POWER_STATE_ACTIVE),
+      last_activity_time(0),
       sleep_timeout(SLEEP_TIMEOUT_IDLE),
-      battery_voltage(12.0f),
-      battery_percent(100.0f),
-      last_error(0) {}
+      wakeup_on_can(false),
+      wakeup_on_gps(false),
+      wakeup_from_rtc(false) {}
 
 PowerManager::~PowerManager() {}
 
 bool PowerManager::begin() {
     DEBUG_PRINTLN("[Power] Initializing power manager...");
-    last_activity = millis();
+    last_activity_time = millis();
     setupRTCTimer();
+    setupGPIOWakeup();
     return true;
 }
 
-void PowerManager::loop() {
-    checkSleepConditions();
-}
-
 void PowerManager::notifyActivity() {
-    last_activity = millis();
-    if (current_state == POWER_SLEEP) {
+    last_activity_time = millis();
+    if (current_state == POWER_STATE_SLEEP) {
         DEBUG_PRINTLN("[Power] Activity detected, returning to active state");
-        current_state = POWER_ACTIVE;
+        current_state = POWER_STATE_ACTIVE;
     }
 }
 
-bool PowerManager::goToDeepSleep(uint32_t duration_seconds) {
+uint32_t PowerManager::getIdleTime() const {
+    return millis() - last_activity_time;
+}
+
+bool PowerManager::shouldEnterSleep() const {
+    return getIdleTime() > sleep_timeout;
+}
+
+bool PowerManager::goToDeepSleep(uint32_t sleep_duration_seconds) {
     DEBUG_PRINTLN("[Power] Entering deep sleep...");
-    handleDeepSleep(duration_seconds);
+    current_state = POWER_STATE_DEEP_SLEEP;
+    handleDeepSleep(sleep_duration_seconds > 0 ? sleep_duration_seconds : 3600);
     return true;
 }
 
@@ -39,36 +45,59 @@ bool PowerManager::wakeFromDeepSleep() {
     DEBUG_PRINTLN("[Power] Waking from deep sleep...");
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     DEBUG_PRINTF("[Power] Woke from cause: %d\n", (int)cause);
+    current_state = POWER_STATE_ACTIVE;
     return true;
 }
 
-bool PowerManager::goToLightSleep(uint32_t duration_ms) {
+bool PowerManager::goToLightSleep(uint32_t sleep_duration_ms) {
     DEBUG_PRINTLN("[Power] Entering light sleep...");
-    current_state = POWER_LIGHT_SLEEP;
+    current_state = POWER_STATE_SLEEP;
     return true;
 }
 
 float PowerManager::getBatteryVoltage() const {
-    return battery_voltage;
+    // Read ADC pin (BAT_MON_PIN) and convert
+    // Placeholder: return nominal voltage
+    return 12.6f;  // Fully charged
 }
 
-float PowerManager::getBatteryPercent() const {
-    return battery_percent;
+uint8_t PowerManager::estimateBatteryPercent() const {
+    float voltage = getBatteryVoltage();
+    // Simple linear estimate: 10V = 0%, 13.8V = 100%
+    uint8_t percent = (uint8_t)((voltage - 10.0f) / 3.8f * 100.0f);
+    return (percent > 100) ? 100 : percent;
 }
 
-void PowerManager::updateBatteryStatus() {
-    // Read ADC and update battery values
-    // For now, just return nominal values
-    battery_voltage = 12.6f;  // Fully charged
-    battery_percent = 100.0f;
+bool PowerManager::isBatteryLow() const {
+    return getBatteryVoltage() < 10.5f;  // Below 10.5V is low
 }
 
-void PowerManager::setupRTCTimer() {
-    DEBUG_PRINTLN("[Power] RTC timer configured");
+const char* PowerManager::getPowerStateName() const {
+    switch (current_state) {
+        case POWER_STATE_ACTIVE:
+            return "Active";
+        case POWER_STATE_IDLE:
+            return "Idle";
+        case POWER_STATE_SLEEP:
+            return "Light Sleep";
+        case POWER_STATE_DEEP_SLEEP:
+            return "Deep Sleep";
+        default:
+            return "Unknown";
+    }
+}
+
+void PowerManager::setupRTCWakeup(uint32_t interval_seconds) {
+    DEBUG_PRINTF("[Power] RTC wakeup configured for %lu seconds\n", interval_seconds);
+    esp_sleep_enable_timer_wakeup(interval_seconds * 1000000ULL);
 }
 
 void PowerManager::setupGPIOWakeup() {
     DEBUG_PRINTLN("[Power] GPIO wake-up configured");
+}
+
+void PowerManager::setupRTCTimer() {
+    DEBUG_PRINTLN("[Power] RTC timer configured");
 }
 
 void PowerManager::handleDeepSleep(uint32_t duration) {
@@ -80,11 +109,4 @@ void PowerManager::handleDeepSleep(uint32_t duration) {
 
 void PowerManager::configureModemForSleep() {
     DEBUG_PRINTLN("[Power] Configuring modem for sleep mode");
-}
-
-void PowerManager::checkSleepConditions() {
-    uint32_t idle_time = millis() - last_activity;
-    if (idle_time > sleep_timeout && current_state == POWER_ACTIVE) {
-        current_state = POWER_IDLE;
-    }
 }

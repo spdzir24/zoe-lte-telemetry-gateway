@@ -40,6 +40,7 @@ void loop() {
     // CAN processing
     CANMessage_t msg;
     if (can_handler.readCAN1(msg)) {
+        power_manager.notifyActivity();
         data_manager.processCAN1Message(msg);
     }
     
@@ -48,23 +49,21 @@ void loop() {
     mqtt_handler.loop();
     
     // Power management
-    power_manager.loop();
     data_manager.loop();
     
     // GPS update every 5 minutes (when connected)
     static uint32_t last_gps_update = 0;
-    if ((millis() - last_gps_update) > 300000UL && modem_handler.isConnected()) {
-        float lat = 0.0f, lon = 0.0f;
-        uint8_t sats = 0;
-        if (modem_handler.getGPS(lat, lon, sats)) {
-            DEBUG_PRINTF("[GPS] Lat: %.6f, Lon: %.6f, Sats: %d\n", lat, lon, sats);
+    if ((millis() - last_gps_update) > 300000UL && modem_handler.isNetworkConnected()) {
+        GPSData_t gps;
+        if (modem_handler.getGPS(gps)) {
+            DEBUG_PRINTF("[GPS] Lat: %.6f, Lon: %.6f, Sats: %d\n", gps.latitude, gps.longitude, gps.satellites);
             
             char gps_topic[128];
             snprintf(gps_topic, sizeof(gps_topic), "%s/gps/latitude", MQTT_BASE_TOPIC);
-            mqtt_handler.publish(gps_topic, lat, 6);
+            mqtt_handler.publish(gps_topic, gps.latitude, 6);
             
             snprintf(gps_topic, sizeof(gps_topic), "%s/gps/longitude", MQTT_BASE_TOPIC);
-            mqtt_handler.publish(gps_topic, lon, 6);
+            mqtt_handler.publish(gps_topic, gps.longitude, 6);
         }
         last_gps_update = millis();
     }
@@ -95,20 +94,21 @@ void handleMQTTConnection() {
 
 void checkSleepConditions() {
     // Check if we should enter sleep
-    static uint32_t idle_start = millis();
-    
-    // This would check CAN activity and power state
-    // For now, just monitor activity
+    if (power_manager.shouldEnterSleep()) {
+        // Would enter sleep here
+        // power_manager.goToLightSleep(5000);
+    }
 }
 
 void printSystemStatus() {
     DEBUG_PRINTLN("\n====== SYSTEM STATUS REPORT =======");
     DEBUG_PRINTF("Uptime: %lu seconds\n", millis() / 1000);
-    DEBUG_PRINTF("Battery: %.2f V (%.1f%%)\n", power_manager.getBatteryVoltage(),
-                power_manager.getBatteryPercent());
+    DEBUG_PRINTF("Battery: %.2f V (%u%%)\n", power_manager.getBatteryVoltage(),
+                power_manager.estimateBatteryPercent());
     DEBUG_PRINTF("CAN Messages: %lu\n", data_manager.getProcessedMessageCount());
     DEBUG_PRINTF("MQTT Published: %lu\n", data_manager.getPublishedMessageCount());
     DEBUG_PRINTF("MQTT Connected: %s\n", mqtt_handler.isConnected() ? "Yes" : "No");
-    DEBUG_PRINTF("Modem Connected: %s\n", modem_handler.isConnected() ? "Yes" : "No");
+    DEBUG_PRINTF("Modem Connected: %s\n", modem_handler.isNetworkConnected() ? "Yes" : "No");
+    DEBUG_PRINTF("Power State: %s\n", power_manager.getPowerStateName());
     DEBUG_PRINTLN("===================================");
 }
