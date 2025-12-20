@@ -40,10 +40,10 @@
 // Base topic for all published messages
 #define MQTT_BASE_TOPIC "vehicle/zoe"
 
-// MQTT publish intervals (milliseconds)
-#define MQTT_PUBLISH_INTERVAL_FAST 60000   // 60 seconds (battery, SoC, speed)
-#define MQTT_PUBLISH_INTERVAL_MID  300000  // 5 minutes (temperatures, voltages)
-#define MQTT_PUBLISH_INTERVAL_SLOW 3600000 // 60 minutes (statistics, history)
+// MQTT publish intervals (milliseconds) - MUST be uint32_t for values > 65535
+#define MQTT_PUBLISH_INTERVAL_FAST 60000UL   // 60 seconds (battery, SoC, speed)
+#define MQTT_PUBLISH_INTERVAL_MID  300000UL  // 5 minutes (temperatures, voltages)
+#define MQTT_PUBLISH_INTERVAL_SLOW 3600000UL // 60 minutes (statistics, history)
 
 #define MQTT_RECONNECT_INTERVAL 10000      // Retry connection every 10s
 #define MQTT_KEEPALIVE 60                   // MQTT keep-alive in seconds
@@ -56,7 +56,7 @@
 #define MODEM_PREFERRED_MODE 1 // 1 = CAT-M, 2 = NB-IoT, 3 = Both
 
 // GPS Configuration
-#define GPS_UPDATE_INTERVAL 300000  // Update GPS every 5 minutes
+#define GPS_UPDATE_INTERVAL 300000UL  // Update GPS every 5 minutes
 #define GPS_REQUIRED_SATELLITES 4   // Minimum satellites for fix
 
 // ============================================================================
@@ -91,7 +91,7 @@
 #define ENABLE_BLUETOOTH false  // Disable Bluetooth
 #define ENABLE_GPS true         // Enable GPS (SIM7080G internal)
 #define ENABLE_DEEP_SLEEP true  // Enable deep sleep after timeout
-#define ENABLE_DEBUG false      // Enable serial debug output
+#define ENABLE_DEBUG 1          // Enable serial debug output
 #define ENABLE_WEB_SERVER false // Optional: web interface on GPIO 80
 
 // ============================================================================
@@ -106,13 +106,18 @@
 // DEBUG MACROS
 // ============================================================================
 #if ENABLE_DEBUG
-  #define DEBUG_PRINT(x) Serial.print(x)
-  #define DEBUG_PRINTLN(x) Serial.println(x)
-  #define DEBUG_PRINTF(fmt, ...) Serial.printf(fmt, ##__VA_ARGS__)
-else
-  #define DEBUG_PRINT(x)
-  #define DEBUG_PRINTLN(x)
-  #define DEBUG_PRINTF(fmt, ...)
+    #define DEBUG_PRINT(x) Serial.print(x)
+    #define DEBUG_PRINTLN(x) Serial.println(x)
+    #define DEBUG_PRINTF(fmt, ...) Serial.printf(fmt, ##__VA_ARGS__)
+#else
+    #define DEBUG_PRINT(x)
+    #define DEBUG_PRINTLN(x)
+    #define DEBUG_PRINTF(fmt, ...)
 #endif
+
+// ============================================================================
+// STRING MACRO
+// ============================================================================
+#define STRINGIFY(x) #x
 
 #endif // CONFIG_H
