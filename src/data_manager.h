@@ -13,7 +13,7 @@
 typedef struct {
     const char* name;
     uint32_t can_id;
-    const CANSignal_t signal;
+    CANSignal_t signal;  // Removed const to allow initialization
     uint32_t publish_interval;  // ms
     uint32_t last_published;
     double last_value;
