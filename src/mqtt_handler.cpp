@@ -17,26 +17,18 @@ MQTTHandler::~MQTTHandler() {
 }
 
 bool MQTTHandler::begin(const char* broker, uint16_t port, const char* client_id) {
-    // Note: This assumes Network is already available (WiFi or LTE)
-    // For SIM7080G, you would use: client.setClient(tlsClient) for SSL/TLS
-    
-    // This is a placeholder - actual implementation depends on network type
     DEBUG_PRINTF("[MQTT] Configuring for broker: %s:%d\n", broker, port);
-    
-    // PubSubClient setup (would be connected to network stream)
     client.setServer(broker, port);
     client.setCallback(messageCallback);
     client.setBufferSize(MQTT_MAX_PACKET_SIZE);
-    
     return true;
 }
 
 bool MQTTHandler::connect(const char* username, const char* password) {
-    if (is_connected) {
+    if (client.connected()) {
         return true;
     }
     
-    // Prevent rapid reconnection attempts
     if ((millis() - last_connection_attempt) < MQTT_RECONNECT_INTERVAL) {
         return false;
     }
@@ -55,22 +47,19 @@ bool MQTTHandler::connect(const char* username, const char* password) {
     
     if (success) {
         is_connected = true;
-        connection_attempts = 0;  // Reset counter on successful connection
+        connection_attempts = 0;
         DEBUG_PRINTLN("[MQTT] Connected successfully");
-        
-        // Subscribe to control topics (if needed)
         subscribe(MQTT_BASE_TOPIC "/control/#");
     } else {
         is_connected = false;
         last_error = client.state();
-        DEBUG_PRINTF("[MQTT] Connection failed, state: %d\n", last_error);
     }
     
     return success;
 }
 
 void MQTTHandler::disconnect() {
-    if (is_connected) {
+    if (client.connected()) {
         client.disconnect();
         is_connected = false;
         DEBUG_PRINTLN("[MQTT] Disconnected");
@@ -78,7 +67,8 @@ void MQTTHandler::disconnect() {
 }
 
 bool MQTTHandler::isConnected() const {
-    return client.connected();
+    // Use mutable client for const method
+    return const_cast<PubSubClient&>(client).connected();
 }
 
 void MQTTHandler::loop() {
@@ -86,7 +76,6 @@ void MQTTHandler::loop() {
         is_connected = false;
         handleReconnection();
     }
-    
     client.loop();
 }
 
@@ -132,18 +121,11 @@ bool MQTTHandler::subscribe(const char* topic) {
     if (!client.connected()) {
         return false;
     }
-    
     if (client.subscribe(topic)) {
         DEBUG_PRINTF("[MQTT] Subscribed to %s\n", topic);
         return true;
     }
-    
     return false;
-}
-
-void MQTTHandler::setMessageCallback(std::function<void(const char*, const byte*, unsigned int)> callback) {
-    // Custom callback handling
-    // Implementation depends on your callback needs
 }
 
 void MQTTHandler::startBatch() {
@@ -154,7 +136,6 @@ void MQTTHandler::startBatch() {
 
 void MQTTHandler::endBatch() {
     batch_mode = false;
-    // Batch data would be sent as single JSON
     if (batch_data.length() > 0) {
         publishJSON(MQTT_BASE_TOPIC "/batch", batch_data.c_str(), false);
     }
@@ -166,15 +147,12 @@ void MQTTHandler::handleReconnection() {
     if (connection_attempts < 5) {
         connect(MQTT_USERNAME, MQTT_PASSWORD);
     } else {
-        // Too many failed attempts
         DEBUG_PRINTLN("[MQTT] Max reconnection attempts reached");
     }
 }
 
 void MQTTHandler::messageCallback(char* topic, byte* payload, unsigned int length) {
-    // Static callback for MQTT messages
     if (instance) {
-        // Handle subscribed message
         DEBUG_PRINTF("[MQTT] Message received on %s\n", topic);
     }
 }
