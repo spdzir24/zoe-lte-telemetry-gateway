@@ -15,10 +15,16 @@ const DataSimulator::SimulationConfig DataSimulator::DEFAULT_CONFIG = {
     .current_variation = 1.0f          // Random currents
 };
 
-// Global instance
-DataSimulator g_simulator;
-
 // Singleton instance
+DataSimulator& getInstance() {
+    static DataSimulator instance;
+    return instance;
+}
+
+// Global reference to singleton
+DataSimulator& g_simulator = getInstance();
+
+// Singleton accessor
 DataSimulator& DataSimulator::getInstance() {
     static DataSimulator instance;
     return instance;
@@ -230,5 +236,5 @@ void DataSimulator::debugPrint() const {
     DEBUG_PRINTF("Charging: %s | Doors: %s\n",
                  current_data.charging ? "YES" : "NO",
                  current_data.doors_locked ? "LOCKED" : "UNLOCKED");
-    DEBUG_PRINTLN("====================\n");
+    DEBUG_PRINTLN("====================");
 }
