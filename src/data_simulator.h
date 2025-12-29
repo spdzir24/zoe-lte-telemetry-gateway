@@ -71,8 +71,6 @@ public:
     void debugPrint() const;
 
 private:
-    DataSimulator();
-
     // Simulated data generator
     void generateRandomData();
     float getRandomFloat(float min, float max);
@@ -94,7 +92,10 @@ private:
 
     // Default configuration
     static const SimulationConfig DEFAULT_CONFIG;
+    
+    // Private constructor for singleton
+    DataSimulator();
 };
 
-// Global instance
-extern DataSimulator g_simulator;
+// Global singleton accessor
+extern DataSimulator& g_simulator;
