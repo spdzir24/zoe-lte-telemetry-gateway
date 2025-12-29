@@ -112,34 +112,38 @@ void loop() {
         }
     }
     
-    // MQTT handling
-    handleMQTTConnection();
-    mqtt_handler.loop();
+    // MQTT handling - SKIP in simulator mode
+    if (!g_settings.getSettings().simulator.enabled) {
+        handleMQTTConnection();
+        mqtt_handler.loop();
+    }
     
     // Power management
     data_manager.loop();
     
-    // GPS update interval from settings
-    static uint32_t last_gps_update = 0;
-    uint32_t gps_interval = g_settings.getSettings().modem.gps_interval;
-    
-    if ((millis() - last_gps_update) > gps_interval && modem_handler.isNetworkConnected()) {
-        GPSData_t gps;
-        if (modem_handler.getGPS(gps)) {
-            DEBUG_PRINTF("[GPS] Lat: %.6f, Lon: %.6f, Sats: %d\n", 
-                        gps.latitude, gps.longitude, gps.satellites);
-            
-            // Get base topic from settings
-            const char* base_topic = g_settings.getSettings().mqtt.base_topic;
-            
-            char gps_topic[128];
-            snprintf(gps_topic, sizeof(gps_topic), "%s/gps/latitude", base_topic);
-            mqtt_handler.publish(gps_topic, gps.latitude, 6);
-            
-            snprintf(gps_topic, sizeof(gps_topic), "%s/gps/longitude", base_topic);
-            mqtt_handler.publish(gps_topic, gps.longitude, 6);
+    // GPS update interval from settings (also skip in simulator)
+    if (!g_settings.getSettings().simulator.enabled) {
+        static uint32_t last_gps_update = 0;
+        uint32_t gps_interval = g_settings.getSettings().modem.gps_interval;
+        
+        if ((millis() - last_gps_update) > gps_interval && modem_handler.isNetworkConnected()) {
+            GPSData_t gps;
+            if (modem_handler.getGPS(gps)) {
+                DEBUG_PRINTF("[GPS] Lat: %.6f, Lon: %.6f, Sats: %d\n", 
+                            gps.latitude, gps.longitude, gps.satellites);
+                
+                // Get base topic from settings
+                const char* base_topic = g_settings.getSettings().mqtt.base_topic;
+                
+                char gps_topic[128];
+                snprintf(gps_topic, sizeof(gps_topic), "%s/gps/latitude", base_topic);
+                mqtt_handler.publish(gps_topic, gps.latitude, 6);
+                
+                snprintf(gps_topic, sizeof(gps_topic), "%s/gps/longitude", base_topic);
+                mqtt_handler.publish(gps_topic, gps.longitude, 6);
+            }
+            last_gps_update = millis();
         }
-        last_gps_update = millis();
     }
     
     // Check for sleep conditions
@@ -236,7 +240,9 @@ void printSystemStatus() {
     }
     
     DEBUG_PRINTF("MQTT Published: %lu\n", data_manager.getPublishedMessageCount());
-    DEBUG_PRINTF("MQTT Connected: %s\n", mqtt_handler.isConnected() ? "Yes" : "No");
+    if (!settings.simulator.enabled) {
+        DEBUG_PRINTF("MQTT Connected: %s\n", mqtt_handler.isConnected() ? "Yes" : "No");
+    }
     DEBUG_PRINTF("Modem Connected: %s\n", modem_handler.isNetworkConnected() ? "Yes" : "No");
     DEBUG_PRINTF("Power State: %s\n", power_manager.getPowerStateName());
     DEBUG_PRINTF("Idle Time: %lu ms\n", power_manager.getIdleTime());
