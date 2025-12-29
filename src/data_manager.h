@@ -10,6 +10,39 @@
 #include "mqtt_handler.h"
 #include "modem_handler.h"
 
+// Vehicle telemetry data structure
+// Used for both real CAN data and simulated data
+typedef struct {
+    uint32_t timestamp_ms;              // Timestamp in milliseconds
+    
+    // Battery
+    float soc_percent;                  // State of charge 0-100%
+    float battery_temp_c;               // Battery temperature in Celsius
+    float dc_voltage;                   // DC voltage in volts
+    float dc_current_a;                 // DC current in amps (negative = discharge)
+    float power_kw;                     // Calculated power in kilowatts
+    
+    // Motor
+    float motor_rpm;                    // Motor revolutions per minute
+    float motor_temp_c;                 // Motor temperature in Celsius
+    
+    // Cabin
+    float cabin_temp_c;                 // Cabin temperature in Celsius
+    
+    // Speed and distance
+    float speed_kmh;                    // Current speed in km/h
+    float odometer_km;                  // Total distance in km
+    
+    // GPS
+    float gps_latitude;                 // GPS latitude
+    float gps_longitude;                // GPS longitude
+    uint8_t gps_satellites;             // Number of satellites
+    
+    // Status
+    bool charging;                      // Is charging
+    bool doors_locked;                  // Are doors locked
+} VehicleData;
+
 typedef struct {
     const char* name;
     uint32_t can_id;
