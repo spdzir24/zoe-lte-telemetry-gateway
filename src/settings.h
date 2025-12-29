@@ -59,6 +59,13 @@ public:
         bool file_logging = false;
     };
 
+    // Simulator Settings (for testing without CAN bus)
+    struct SimulatorSettings {
+        bool enabled = false;              // Enable/disable simulation
+        uint32_t update_interval_ms = 5000; // Update frequency (5 seconds)
+        bool vary_values = true;           // Randomize values
+    };
+
     // Complete Settings Structure
     struct Settings {
         MQTTSettings mqtt;
@@ -66,6 +73,7 @@ public:
         ModemSettings modem;
         PowerSettings power;
         DebugSettings debug;
+        SimulatorSettings simulator;  // NEW: Simulator configuration
         uint32_t version = 1;
         uint32_t last_modified = 0;
     };
@@ -144,6 +152,11 @@ public:
      * Update Debug settings
      */
     void setDebugSettings(const DebugSettings& debug);
+
+    /**
+     * Update Simulator settings
+     */
+    void setSimulatorSettings(const SimulatorSettings& simulator);
 
     /**
      * Export settings as JSON document
