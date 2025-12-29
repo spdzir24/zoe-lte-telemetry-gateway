@@ -5,7 +5,7 @@
     "broker": "192.168.1.100",
     "port": 1883,
     "username": "homeassistant",
-    "password": "your_password_here",
+    "password": "password",
     "keepalive": 60,
     "base_topic": "vehicle/zoe",
     "publish_interval_fast": 60000,
@@ -39,8 +39,12 @@
     "file_logging": false
   },
   "simulator": {
-    "enabled": false,
+    "enabled": true,
     "update_interval_ms": 5000,
-    "vary_values": true
+    "vary_values": true,
+    "soc_variation": 0.5,
+    "temp_variation": 2.0,
+    "speed_variation": 1.0,
+    "current_variation": 1.0
   }
 }
