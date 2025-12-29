@@ -37,5 +37,10 @@
     "log_level": 1,
     "serial_output": true,
     "file_logging": false
+  },
+  "simulator": {
+    "enabled": false,
+    "update_interval_ms": 5000,
+    "vary_values": true
   }
 }
