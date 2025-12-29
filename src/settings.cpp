@@ -122,6 +122,14 @@ bool SettingsManager::load() {
         if (debug["serial_output"]) settings.debug.serial_output = debug["serial_output"];
         if (debug["file_logging"]) settings.debug.file_logging = debug["file_logging"];
     }
+
+    // Parse Simulator settings (NEW)
+    if (doc["simulator"].is<JsonObject>()) {
+        auto simulator = doc["simulator"];
+        if (simulator["enabled"]) settings.simulator.enabled = simulator["enabled"];
+        if (simulator["update_interval_ms"]) settings.simulator.update_interval_ms = simulator["update_interval_ms"];
+        if (simulator["vary_values"]) settings.simulator.vary_values = simulator["vary_values"];
+    }
     
     if (doc["version"]) settings.version = doc["version"];
     if (doc["last_modified"]) settings.last_modified = doc["last_modified"];
@@ -171,6 +179,11 @@ bool SettingsManager::save() {
     doc["debug"]["log_level"] = settings.debug.log_level;
     doc["debug"]["serial_output"] = settings.debug.serial_output;
     doc["debug"]["file_logging"] = settings.debug.file_logging;
+
+    // Build Simulator section (NEW)
+    doc["simulator"]["enabled"] = settings.simulator.enabled;
+    doc["simulator"]["update_interval_ms"] = settings.simulator.update_interval_ms;
+    doc["simulator"]["vary_values"] = settings.simulator.vary_values;
     
     // Metadata
     doc["version"] = settings.version;
@@ -254,12 +267,18 @@ void SettingsManager::setDebugSettings(const DebugSettings& debug) {
     save();
 }
 
+void SettingsManager::setSimulatorSettings(const SimulatorSettings& simulator) {
+    settings.simulator = simulator;
+    save();
+}
+
 void SettingsManager::exportToJSON(JsonDocument& doc) const {
     doc["mqtt"]["broker"] = settings.mqtt.broker;
     doc["mqtt"]["port"] = settings.mqtt.port;
     doc["can"]["speed_high"] = settings.can.speed_high;
     doc["modem"]["baudrate"] = settings.modem.baudrate;
     doc["power"]["sleep_timeout_idle"] = settings.power.sleep_timeout_idle;
+    doc["simulator"]["enabled"] = settings.simulator.enabled;
 }
 
 bool SettingsManager::importFromJSON(const JsonDocument& doc) {
@@ -283,6 +302,8 @@ void SettingsManager::debugPrint() const {
     DEBUG_PRINTF("Modem Baudrate: %u\n", settings.modem.baudrate);
     DEBUG_PRINTF("Sleep Timeout: %u ms\n", settings.power.sleep_timeout_idle);
     DEBUG_PRINTF("Debug Enabled: %s\n", settings.debug.enabled ? "YES" : "NO");
+    DEBUG_PRINTF("Simulator Enabled: %s\n", settings.simulator.enabled ? "YES" : "NO");
+    DEBUG_PRINTF("Simulator Update Interval: %u ms\n", settings.simulator.update_interval_ms);
     DEBUG_PRINTLN("============================\n");
 }
 
