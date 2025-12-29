@@ -6,6 +6,7 @@
 #include "modem_handler.h"
 #include "power_manager.h"
 #include "data_manager.h"
+#include "data_simulator.h"
 
 // Global instances
 CANHandler can_handler;
@@ -13,6 +14,7 @@ MQTTHandler mqtt_handler;
 ModemHandler modem_handler;
 PowerManager power_manager;
 DataManager data_manager(&can_handler, &mqtt_handler, &modem_handler);
+DataSimulator& simulator = DataSimulator::getInstance();
 
 // Function prototypes
 void handleMQTTConnection();
@@ -42,9 +44,32 @@ void setup() {
     // Initialize configuration from settings
     initializeFromSettings();
     
+    // Initialize simulator if enabled in config
+    const auto& sim_config = g_settings.getSettings().simulator;
+    if (sim_config.enabled) {
+        DEBUG_PRINTLN("[System] SIMULATOR MODE ENABLED!");
+        DataSimulator::SimulationConfig config = {
+            .enabled = true,
+            .update_interval_ms = sim_config.update_interval_ms,
+            .vary_values = sim_config.vary_values,
+            .soc_variation = 0.5f,
+            .temp_variation = 2.0f,
+            .speed_variation = 1.0f,
+            .current_variation = 1.0f
+        };
+        simulator.configure(config);
+        if (simulator.begin()) {
+            simulator.debugPrint();
+        }
+    } else {
+        DEBUG_PRINTLN("[System] Running in normal mode (real CAN data)");
+    }
+    
     // Initialize all components with settings
-    DEBUG_PRINTLN("[System] Initializing CAN Handler...");
-    can_handler.begin();
+    if (!g_settings.getSettings().simulator.enabled) {
+        DEBUG_PRINTLN("[System] Initializing CAN Handler...");
+        can_handler.begin();
+    }
     
     DEBUG_PRINTLN("[System] Initializing Modem Handler...");
     modem_handler.begin();
@@ -69,11 +94,22 @@ void setup() {
 }
 
 void loop() {
-    // CAN processing
-    CANMessage_t msg;
-    if (can_handler.readCAN1(msg)) {
-        power_manager.notifyActivity();
-        data_manager.processCAN1Message(msg);
+    // Handle simulator mode
+    if (g_settings.getSettings().simulator.enabled) {
+        // Use simulated data instead of CAN
+        if (simulator.update()) {
+            const VehicleData& sim_data = simulator.getData();
+            DEBUG_PRINTF("[Simulator] SOC: %.1f%% | Temp: %.1f°C | Speed: %.1f km/h\n",
+                        sim_data.soc_percent, sim_data.battery_temp_c, sim_data.speed_kmh);
+            // Data would be processed here for MQTT publishing
+        }
+    } else {
+        // Normal CAN processing
+        CANMessage_t msg;
+        if (can_handler.readCAN1(msg)) {
+            power_manager.notifyActivity();
+            data_manager.processCAN1Message(msg);
+        }
     }
     
     // MQTT handling
@@ -155,9 +191,11 @@ void initializeFromSettings() {
     DEBUG_PRINTF("  Keepalive: %d seconds\n", settings.mqtt.keepalive);
     
     // CAN Settings
-    DEBUG_PRINTF("  CAN High Speed: %u bps\n", settings.can.speed_high);
-    DEBUG_PRINTF("  CAN Low Speed: %u bps\n", settings.can.speed_low);
-    DEBUG_PRINTF("  Dual CAN: %s\n", settings.can.dual_can ? "YES" : "NO");
+    if (!settings.simulator.enabled) {
+        DEBUG_PRINTF("  CAN High Speed: %u bps\n", settings.can.speed_high);
+        DEBUG_PRINTF("  CAN Low Speed: %u bps\n", settings.can.speed_low);
+        DEBUG_PRINTF("  Dual CAN: %s\n", settings.can.dual_can ? "YES" : "NO");
+    }
     
     // Modem Settings
     DEBUG_PRINTF("  Modem Baudrate: %u\n", settings.modem.baudrate);
@@ -172,6 +210,13 @@ void initializeFromSettings() {
     DEBUG_PRINTF("  Debug: %s\n", settings.debug.enabled ? "ENABLED" : "DISABLED");
     DEBUG_PRINTF("  Log Level: %d\n", settings.debug.log_level);
     
+    // Simulator Settings
+    DEBUG_PRINTF("  Simulator: %s\n", settings.simulator.enabled ? "ENABLED" : "DISABLED");
+    if (settings.simulator.enabled) {
+        DEBUG_PRINTF("  Simulator Update Interval: %u ms\n", settings.simulator.update_interval_ms);
+        DEBUG_PRINTF("  Simulator Vary Values: %s\n", settings.simulator.vary_values ? "YES" : "NO");
+    }
+    
     DEBUG_PRINTLN();
 }
 
@@ -180,9 +225,16 @@ void printSystemStatus() {
     
     DEBUG_PRINTLN("\n====== SYSTEM STATUS REPORT =======");
     DEBUG_PRINTF("Uptime: %lu seconds\n", millis() / 1000);
-    DEBUG_PRINTF("Battery: %.2f V (%u%%)\n", power_manager.getBatteryVoltage(),
-                power_manager.estimateBatteryPercent());
-    DEBUG_PRINTF("CAN Messages: %lu\n", data_manager.getProcessedMessageCount());
+    
+    if (settings.simulator.enabled) {
+        DEBUG_PRINTLN("Mode: SIMULATOR (testing without CAN bus)");
+        simulator.debugPrint();
+    } else {
+        DEBUG_PRINTF("Battery: %.2f V (%u%%)\n", power_manager.getBatteryVoltage(),
+                    power_manager.estimateBatteryPercent());
+        DEBUG_PRINTF("CAN Messages: %lu\n", data_manager.getProcessedMessageCount());
+    }
+    
     DEBUG_PRINTF("MQTT Published: %lu\n", data_manager.getPublishedMessageCount());
     DEBUG_PRINTF("MQTT Connected: %s\n", mqtt_handler.isConnected() ? "Yes" : "No");
     DEBUG_PRINTF("Modem Connected: %s\n", modem_handler.isNetworkConnected() ? "Yes" : "No");
