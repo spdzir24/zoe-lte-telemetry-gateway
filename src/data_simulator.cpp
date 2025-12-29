@@ -15,20 +15,14 @@ const DataSimulator::SimulationConfig DataSimulator::DEFAULT_CONFIG = {
     .current_variation = 1.0f          // Random currents
 };
 
-// Singleton instance
-DataSimulator& getInstance() {
-    static DataSimulator instance;
-    return instance;
-}
-
-// Global reference to singleton
-DataSimulator& g_simulator = getInstance();
-
 // Singleton accessor
 DataSimulator& DataSimulator::getInstance() {
     static DataSimulator instance;
     return instance;
 }
+
+// Global reference to singleton
+DataSimulator& g_simulator = DataSimulator::getInstance();
 
 DataSimulator::DataSimulator()
     : sim_config(DEFAULT_CONFIG),
